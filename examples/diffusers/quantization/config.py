@@ -41,7 +41,43 @@ INT8_DEFAULT_CONFIG = {
     "algorithm": "max",
 }
 
+NVFP4_E2M1 = {
+    "num_bits": (2, 1),
+    "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+    "enable": True,
+}
+
+FP8_E4M3 = {"num_bits": (4, 3), "axis": None}
+
 NVFP4_DEFAULT_CONFIG = {
+    "quant_cfg": {
+        "*weight_quantizer": NVFP4_E2M1,
+        "*input_quantizer": NVFP4_QDQ,
+        "*output_quantizer": {"enable": False},
+        "*[qkv]_bmm_quantizer": FP8_E4M3,
+        "*softmax_quantizer": FP8_E4M3,
+        "default": {"enable": False},
+    },
+    "algorithm": "max",
+}
+
+MODERN_NVFP4_QUANTIZATION_CONFIG = {
+    "quant_cfg": {
+        "*": NVFP4_E2M1,
+        "*rotary*": {"enable": False},
+        "*rope*": {"enable": False},
+        "*pos_embed*": {"enable": False},
+        "*norm*": {"enable": False},
+        "*LayerNorm*": {"enable": False},
+        "*RMSNorm*": {"enable": False},
+        "*norm1.linear*": NVFP4_E2M1,
+        "*norm1_context.linear*": NVFP4_QDQ,
+    },
+    "algorithm": "max",
+}
+
+
+NVFP4_FP8_MHA_CONFIG = {
     "quant_cfg": {
         "*weight_quantizer": {
             "num_bits": (2, 1),
@@ -56,46 +92,29 @@ NVFP4_DEFAULT_CONFIG = {
             "enable": True,
         },
         "*output_quantizer": {"enable": False},
-        "*[qkv]_bmm_quantizer": {"num_bits": (4, 3), "axis": None},
+        "*q_bmm_quantizer": {
+            "num_bits": (4, 3),
+            "axis": None,
+        },
+        "*k_bmm_quantizer": {
+            "num_bits": (4, 3),
+            "axis": None,
+        },
+        "*v_bmm_quantizer": {
+            "num_bits": (4, 3),
+            "axis": None,
+        },
         "*softmax_quantizer": {
+            "num_bits": (4, 3),
+            "axis": None,
+        },
+        "transformer_blocks*bmm2_output_quantizer": {
             "num_bits": (4, 3),
             "axis": None,
         },
         "default": {"enable": False},
     },
     "algorithm": "max",
-}
-
-NVFP4_FP8_MHA_CONFIG = {
-    "quant_cfg": {
-        "**weight_quantizer": {
-            "num_bits": (2, 1),
-            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
-            "axis": None,
-            "enable": True,
-        },
-        "**input_quantizer": {
-            "num_bits": (2, 1),
-            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
-            "axis": None,
-            "enable": True,
-        },
-        "*output_quantizer": {"enable": False},
-        "*[qkv]_bmm_quantizer": {
-            "num_bits": (4, 3),
-            "axis": None,
-        },
-        "*softmax_quantizer": {
-            "num_bits": (4, 3),
-            "axis": None,
-        },
-        "*bmm2_output_quantizer": {
-            "num_bits": (4, 3),
-            "axis": None,
-        },
-        "default": {"enable": False},
-    },
-    "algorithm": {"method": "svdquant", "lowrank": 32},
 }
 
 
@@ -135,6 +154,7 @@ def reset_set_int8_config(quant_config, percentile, n_steps, collect_method, bac
     for layer_name, layer_type in layer_type_map.items():
         wq_name = f"*{layer_name}*weight_quantizer*"
         aq_name = f"*{layer_name}*input_quantizer*"
+
         if layer_type is nn.Linear:
             quant_config["quant_cfg"][wq_name] = {
                 "num_bits": 8,

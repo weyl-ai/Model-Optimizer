@@ -536,6 +536,7 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
         )
     print(f"Saved at {tmp_output}")
     onnx_model = onnx.load(str(tmp_output), load_external_data=True)
+
     if precision == "fp8":
         if not model_name.startswith("flux"):
             graph = gs.import_onnx(onnx_model)
@@ -546,7 +547,12 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
             onnx_model = gs.export_onnx(graph.cleanup())
         else:
             flux_convert_rope_weight_type(onnx_model)
+
     if precision == "fp4":
+        import onnxsim
+
+        onnx_model, _ = onnxsim.simplify(onnx_model)
         onnx_model = NVFP4QuantExporter.process_model(onnx_model)
+
     save_onnx(onnx_model, q_output)
     shutil.rmtree(tmp_subfolder, ignore_errors=True)

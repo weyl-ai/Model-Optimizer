@@ -30,9 +30,11 @@ from config import (
     INT8_DEFAULT_CONFIG,
     NVFP4_DEFAULT_CONFIG,
     NVFP4_FP8_MHA_CONFIG,
+    NVFP4_FULL_MHA_CONFIG,
     reset_set_int8_config,
     set_quant_config_attr,
 )
+from examples.diffusers.quantization import utils
 
 # This is a workaround for making the onnx export of models that use the torch RMSNorm work. We will
 # need to move on to use dynamo based onnx export to properly fix the problem. The issue has been hit
@@ -56,6 +58,7 @@ from diffusers import (
 from onnx_utils.export import generate_fp8_scales, modelopt_export_sd
 from tqdm import tqdm
 from utils import (
+    ChannelPadWrapper,
     check_conv_and_mha,
     check_lora,
     filter_func_default,
@@ -719,7 +722,7 @@ class Quantizer:
             quant_config = FP8_DEFAULT_CONFIG
         elif self.config.format == QuantFormat.FP4:
             if self.model_config.model_type.value.startswith("flux"):
-                quant_config = NVFP4_FP8_MHA_CONFIG
+                quant_config = NVFP4_FULL_MHA_CONFIG
             else:
                 quant_config = NVFP4_DEFAULT_CONFIG
         else:
@@ -751,8 +754,28 @@ class Quantizer:
         self.logger.info("Checking for LoRA layers...")
         check_lora(backbone)
 
+        self.logger.info("Padding to 128...")
+        from utils import ChannelPadWrapper
+
+        backbone = ChannelPadWrapper(backbone)
+
         self.logger.info("Starting model quantization...")
         mtq.quantize(backbone, quant_config, forward_loop)
+
+        for name, module in backbone.named_modules():
+            if isinstance(module, torch.nn.Linear):
+                has_quant = (
+                    hasattr(module, "weight_quantizer") and module.weight_quantizer is not None
+                )
+                if not has_quant:
+                    print(f"UNQUANTIZED: {name} - {module.weight.shape}")
+                else:
+                    q = module.weight_quantizer
+                    bits = getattr(q, "num_bits", "unknown")
+                    enabled = getattr(q, "is_enabled", True)
+                if not enabled or bits != (2, 1):
+                    print(f"WRONG CONFIG: {name} - bits={bits} enabled={enabled}")
+
         # Get model-specific filter function
         model_filter_func = get_model_filter_func(self.model_config.model_type)
         self.logger.info(f"Using filter function for {self.model_config.model_type.value}")
@@ -838,6 +861,7 @@ class ExportManager:
         pipe.to("cpu")
         torch.cuda.empty_cache()
         backbone.to("cuda")
+
         # Export to ONNX
         backbone.eval()
         with torch.no_grad():

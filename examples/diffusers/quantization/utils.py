@@ -19,6 +19,7 @@ from pathlib import Path
 
 import torch
 import torch.nn.functional as F
+from torch import nn
 from datasets import load_dataset
 from diffusers.models.attention_processor import Attention, AttnProcessor
 from diffusers.models.lora import LoRACompatibleConv, LoRACompatibleLinear
@@ -137,3 +138,60 @@ def fp8_mha_disable(backbone, quantized_mha_output: bool = True):
 
     if hasattr(F, "scaled_dot_product_attention"):
         mtq.disable_quantizer(backbone, mha_filter_func)
+
+
+class ChannelPadWrapper(nn.Module):
+    ALIGN = 128
+
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+        self.orig_dims = {}
+
+        for name, module in model.named_modules():
+            if isinstance(module, nn.Linear):
+                out_f, in_f = module.weight.shape
+                self.orig_dims[name] = (out_f, in_f)
+
+                new_in = ((in_f + self.ALIGN - 1) // self.ALIGN) * self.ALIGN
+                new_out = ((out_f + self.ALIGN - 1) // self.ALIGN) * self.ALIGN
+
+                if new_in != in_f or new_out != out_f:
+                    new_weight = torch.zeros(
+                        new_out, new_in, dtype=module.weight.dtype, device=module.weight.device
+                    )
+                    new_weight[:out_f, :in_f] = module.weight
+                    module.weight = nn.Parameter(new_weight)
+
+                    if module.bias is not None:
+                        new_bias = torch.zeros(
+                            new_out, dtype=module.bias.dtype, device=module.bias.device
+                        )
+                        new_bias[:out_f] = module.bias
+                        module.bias = nn.Parameter(new_bias)
+
+                    # Hook the forward to pad input and slice output
+                    self._wrap_linear(module, in_f, out_f, new_in, new_out)
+                    print(f"Padded {name}: ({out_f}, {in_f}) → ({new_out}, {new_in})")
+
+    def _wrap_linear(self, module, orig_in, orig_out, new_in, new_out):
+        orig_forward = module.forward
+        align = self.ALIGN
+
+        def padded_forward(x):
+            # Pad input if needed
+            if x.shape[-1] == orig_in and orig_in != new_in:
+                x = F.pad(x, (0, new_in - orig_in))
+
+            out = orig_forward(x)
+
+            # Slice output if needed
+            if out.shape[-1] == new_out and orig_out != new_out:
+                out = out[..., :orig_out]
+
+            return out
+
+        module.forward = padded_forward
+
+    def forward(self, *args, **kwargs):
+        return self.model(*args, **kwargs)

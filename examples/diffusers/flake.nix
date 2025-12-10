@@ -1,0 +1,49 @@
+{
+  description = "Develop Python on Nix with uv";
+
+  inputs = {
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+  };
+
+  outputs =
+    { nixpkgs, ... }:
+    let
+      inherit (nixpkgs) lib;
+      forAllSystems = lib.genAttrs lib.systems.flakeExposed;
+    in
+    {
+      devShells = forAllSystems (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        {
+          default = pkgs.mkShell {
+            packages = [
+	      pkgs.cudaPackages_13.cudatoolkit
+	      pkgs.cudaPackages_13.tensorrt
+              pkgs.python3
+              pkgs.uv
+	      pkgs.stdenv.cc.cc.lib
+            ];
+
+            env = lib.optionalAttrs pkgs.stdenv.isLinux {
+              # Python libraries often load native shared objects using dlopen(3).
+              # Setting LD_LIBRARY_PATH makes the dynamic library loader aware of libraries without using RPATH for lookup.
+              LD_LIBRARY_PATH = lib.makeLibraryPath pkgs.pythonManylinuxPackages.manylinux1;
+            };
+
+            shellHook = ''
+              unset PYTHONPATH
+              uv sync
+              source .venv/bin/activate
+              
+	      export CUDA_HOME="${pkgs.cudaPackages_13.cudatoolkit}"
+	      export LD_LIBRARY_PATH="/run/opengl-driver/lib:${pkgs.stdenv.cc.cc.lib}/lib:$LD_LIBRARY_PATH"
+	      export TRITON_LIBCUDA_PATH="/run/opengl-driver/lib"
+            '';
+          };
+        }
+      );
+    };
+}

@@ -1,0 +1,21 @@
+[project]
+name = "impure-package"
+version = "0.1.0"
+description = "Add your description here"
+authors = [ ]
+requires-python = ">=3.12"
+dependencies = [
+    "nvidia-modelopt[all]",
+    "sentencepiece>=0.2.1",
+    "torch==2.9.1",
+    "torch-tensorrt>=2.9.0",
+]
+
+[[tool.uv.index]]
+url = "https://pypi.nvidia.com/"
+
+[[tool.uv.index]]
+url = "https://download.pytorch.org/whl/nightly/cu130"
+
+[tool.uv.sources]
+nvidia-modelopt = { path = "../../", editable = true }

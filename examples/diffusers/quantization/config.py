@@ -52,7 +52,7 @@ FP8_E4M3 = {"num_bits": (4, 3), "axis": None}
 NVFP4_DEFAULT_CONFIG = {
     "quant_cfg": {
         "*weight_quantizer": NVFP4_E2M1,
-        "*input_quantizer": NVFP4_QDQ,
+        "*input_quantizer": NVFP4_E2M1,
         "*output_quantizer": {"enable": False},
         "*[qkv]_bmm_quantizer": FP8_E4M3,
         "*softmax_quantizer": FP8_E4M3,
@@ -71,7 +71,7 @@ MODERN_NVFP4_QUANTIZATION_CONFIG = {
         "*LayerNorm*": {"enable": False},
         "*RMSNorm*": {"enable": False},
         "*norm1.linear*": NVFP4_E2M1,
-        "*norm1_context.linear*": NVFP4_QDQ,
+        "*norm1_context.linear*": NVFP4_E2M1,
     },
     "algorithm": "max",
 }

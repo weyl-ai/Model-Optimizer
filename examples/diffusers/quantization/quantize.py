@@ -28,12 +28,13 @@ import torch.nn as nn
 from config import (
     FP8_DEFAULT_CONFIG,
     INT8_DEFAULT_CONFIG,
+    MODERN_NVFP4_QUANTIZATION_CONFIG,
     NVFP4_DEFAULT_CONFIG,
     NVFP4_FP8_MHA_CONFIG,
-    NVFP4_FULL_MHA_CONFIG,
     reset_set_int8_config,
     set_quant_config_attr,
 )
+
 from examples.diffusers.quantization import utils
 
 # This is a workaround for making the onnx export of models that use the torch RMSNorm work. We will
@@ -679,7 +680,10 @@ class Quantizer:
     """Handles model quantization operations."""
 
     def __init__(
-        self, config: QuantizationConfig, model_config: ModelConfig, logger: logging.Logger
+        self,
+        config: QuantizationConfig,
+        model_config: ModelConfig,
+        logger: logging.Logger,
     ):
         """
         Initialize quantizer.
@@ -718,15 +722,19 @@ class Quantizer:
                     collect_method=self.config.collect_method.value,
                     backbone=backbone,
                 )
+
         elif self.config.format == QuantFormat.FP8:
             quant_config = FP8_DEFAULT_CONFIG
+
         elif self.config.format == QuantFormat.FP4:
             if self.model_config.model_type.value.startswith("flux"):
-                quant_config = NVFP4_FULL_MHA_CONFIG
+                quant_config = MODERN_NVFP4_QUANTIZATION_CONFIG
             else:
-                quant_config = NVFP4_DEFAULT_CONFIG
+                quant_config = MODERN_NVFP4_QUANTIZATION_CONFIG
+
         else:
             raise NotImplementedError(f"Unknown format {self.config.format}")
+
         set_quant_config_attr(
             quant_config,
             self.model_config.trt_high_precision_dtype.value,
@@ -856,7 +864,9 @@ class ExportManager:
             self.logger.info(
                 "Detected quantizing conv layers in backbone. Generating FP8 scales..."
             )
+
             generate_fp8_scales(backbone)
+
         self.logger.info("Preparing models for export...")
         pipe.to("cpu")
         torch.cuda.empty_cache()
@@ -867,7 +877,11 @@ class ExportManager:
         with torch.no_grad():
             self.logger.info("Exporting to ONNX...")
             modelopt_export_sd(
-                backbone, str(self.config.onnx_dir), model_type.value, quant_format.value
+                backbone,
+                str(self.config.onnx_dir),
+                model_type.value,
+                quant_format.value,
+                self.logger,
             )
 
         self.logger.info("ONNX export completed successfully")

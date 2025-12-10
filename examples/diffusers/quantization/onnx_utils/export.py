@@ -29,6 +29,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import os
 import shutil
 import tempfile
@@ -38,11 +39,14 @@ from pathlib import Path
 import onnx
 import onnx_graphsurgeon as gs
 import torch
+from torch import nn
+
 from diffusers.models.transformers import (
     FluxTransformer2DModel,
     SD3Transformer2DModel,
     WanTransformer3DModel,
 )
+
 from diffusers.models.transformers.transformer_ltx import LTXVideoTransformer3DModel
 from diffusers.models.unets import UNet2DConditionModel
 from torch.onnx import export as onnx_export
@@ -463,7 +467,13 @@ def save_onnx(onnx_model, output):
     print(f"ONNX model saved to {output}")
 
 
-def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
+def modelopt_export_sd(
+    backbone: nn.Module,
+    onnx_dir: Path,
+    model_name: str,
+    precision: str,
+    logger: logging.Logger,
+):
     model_file_name = "model.onnx"
     os.makedirs(f"{onnx_dir}", exist_ok=True)
     tmp_subfolder = tempfile.mkdtemp(prefix="myapp_")
@@ -550,6 +560,12 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
 
     if precision == "fp4":
         import onnxsim
+
+        if not onnx_model.ir_version:
+            logger.info(f"onnx_model has no ir_version set")
+            onnx_model.ir_version = 9
+        else:
+            logger.info(f"onnx_model has ir_version set to {onnx_model.ir_version}")
 
         onnx_model, _ = onnxsim.simplify(onnx_model)
         onnx_model = NVFP4QuantExporter.process_model(onnx_model)

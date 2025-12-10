@@ -18,7 +18,11 @@
 import numpy as np
 import onnx
 import torch
+import time
+import psutil
+import os
 from onnx import numpy_helper
+from typing import Dict, Any
 
 from modelopt.onnx import utils
 from modelopt.onnx.logging_config import logger
@@ -34,18 +38,38 @@ from modelopt.torch.quantization.qtensor import NVFP4QTensor
 from .base_exporter import ONNXQuantExporter
 
 
-def _cast_fp4(array: np.ndarray) -> np.ndarray:
-    """Cast a numpy array to FLOAT4E2M1 using PyTorch.
+def get_memory_info() -> Dict[str, Any]:
+    """Get current memory usage information."""
+    process = psutil.Process(os.getpid())
+    mem_info = process.memory_info()
+    return {
+        "rss_gb": mem_info.rss / (1024**3),
+        "vms_gb": mem_info.vms / (1024**3),
+        "percent": process.memory_percent(),
+        "available_gb": psutil.virtual_memory().available / (1024**3),
+    }
 
-    Note: The first dimension of the array must be divisible by 2
-    as two FP4 values are packed into a single byte.
-    """
+
+def log_memory_and_size(operation: str, tensor_name: str = None, tensor: np.ndarray = None):
+    """Log memory usage and optionally tensor size."""
+    mem = get_memory_info()
+    msg = f"[{operation}] Memory: {mem['rss_gb']:.2f}GB RSS, {mem['percent']:.1f}% used, {mem['available_gb']:.2f}GB available"
+    if tensor is not None and tensor_name:
+        tensor_size_mb = tensor.nbytes / (1024**2)
+        msg += f" | Tensor '{tensor_name}': shape={tensor.shape}, size={tensor_size_mb:.2f}MB"
+    logger.info(msg)
+
+
+def _cast_fp4(array: np.ndarray) -> np.ndarray:
+    """Cast a numpy array to FLOAT4E2M1 using PyTorch."""
     array_f32_t = torch.from_numpy(array)
     array_f32_t_shape = array_f32_t.shape
     assert array_f32_t_shape[0] % 2 == 0, "array_f32_t_shape[0] must be divisible by 2"
     array_f4_t_shape = (array_f32_t_shape[0] // 2, *array_f32_t_shape[1:])
+
     if torch.cuda.is_available():
         array_f32_t = array_f32_t.cuda()
+
     array_f4_t = NVFP4QTensor._cast_fp4(array_f32_t)
     array_f4_t = array_f4_t.flatten()
     array_f4_t_packed = (array_f4_t[::2] | (array_f4_t[1::2] << 4)).reshape(array_f4_t_shape)
@@ -74,19 +98,7 @@ def _replace_fp4qdq_with_2dq(
     sw_f8_per_block: np.ndarray,
     block_size: int,
 ):
-    """Replaces the given node in the ONNX graph with a subgraph consisting of two DequantizeLinear nodes.
-
-    Args:
-        graph: The ONNX graph containing the node to replace.
-        node: The node to be replaced.
-        initializer_indices: A dictionary mapping initializer names to their indices in the graph.
-        value_info_map: A dictionary mapping value info names to their ValueInfoProto objects.
-        graph_inputs: A set of graph input names.
-        w_f4: NumPy array for w_f4.
-        sw_f32_per_tensor: NumPy array for sw_f32_per_tensor.
-        sw_f8_per_block: NumPy array for sw_f8_per_block.
-        block_size: Block size used in block quantization.
-    """
+    """Replaces the given node with two DequantizeLinear nodes."""
 
     def _add_initializer(initializer):
         if initializer.name not in initializer_indices:
@@ -99,14 +111,11 @@ def _replace_fp4qdq_with_2dq(
         assert tensor_proto.name not in value_info_map, (
             f"{tensor_proto.name} already in value info."
         )
-
         value_info = onnx.helper.make_tensor_value_info(
             tensor_proto.name, tensor_proto.data_type, tensor_proto.dims
         )
         graph.input.append(value_info)
 
-    # Remove the original node from the graph
-    graph.node.remove(node)
     weight_name = node.input[0]
 
     # Generate unique names for the initializers
@@ -125,7 +134,6 @@ def _replace_fp4qdq_with_2dq(
     sw_f32_per_tensor_proto = onnx.numpy_helper.from_array(
         sw_f32_per_tensor, sw_f32_per_tensor_name
     )
-    sw_f8_per_block_proto = onnx.numpy_helper.from_array(sw_f8_per_block, sw_f8_per_block_name)
     sw_f8_per_block_proto = onnx.helper.make_tensor(
         name=sw_f8_per_block_name,
         data_type=onnx_dtype_map["Float8"],
@@ -134,7 +142,7 @@ def _replace_fp4qdq_with_2dq(
         raw=True,
     )
 
-    # Add ValueInfo for the initializers if not present
+    # Add ValueInfo for the initializers
     _add_input_value_info(graph, w_f4_proto)
     _add_input_value_info(graph, sw_f32_per_tensor_proto)
     _add_input_value_info(graph, sw_f8_per_block_proto)
@@ -144,7 +152,7 @@ def _replace_fp4qdq_with_2dq(
     _add_initializer(sw_f32_per_tensor_proto)
     _add_initializer(sw_f8_per_block_proto)
 
-    # Create DequantizeLinear_1 node: (sw_f8_per_block, sw_f32_per_tensor) -> sw_f32
+    # Create DequantizeLinear_1: (sw_f8_per_block, sw_f32_per_tensor) -> sw_f32
     sw_f32_name = weight_name + "_f32_scale"
     dequant1 = onnx.helper.make_node(
         "DequantizeLinear",
@@ -153,7 +161,7 @@ def _replace_fp4qdq_with_2dq(
         name=weight_name + "_DequantizeLinear",
     )
 
-    # Create DequantizeLinear_2 node: (w_f4, sw_f32) -> w_32
+    # Create DequantizeLinear_2: (w_f4, sw_f32) -> w_32
     w32_name = node.output[0]
     dequant2 = onnx.helper.make_node(
         "DequantizeLinear",
@@ -165,14 +173,13 @@ def _replace_fp4qdq_with_2dq(
     )
 
     # Add value_info for sw_f32
-    # Assuming sw_f16 has the same shape as sw_f8_per_block
     sw_f32_type_proto = onnx.helper.make_tensor_type_proto(
         elem_type=onnx_dtype_map["Float"], shape=sw_f8_per_block.shape
     )
     sw_f16_value_info = onnx.helper.make_value_info(name=sw_f32_name, type_proto=sw_f32_type_proto)
     graph.value_info.append(sw_f16_value_info)
 
-    # Change the data type of w16 (output of 2nd DQ) to model weight precision type
+    # Change the data type of output
     if w32_name in value_info_map:
         value_info_map[w32_name].type.tensor_type.elem_type = onnx_dtype_map["Float"]
     else:
@@ -183,42 +190,91 @@ def _replace_fp4qdq_with_2dq(
 
 
 class NVFP4QuantExporter(ONNXQuantExporter):
-    """Exporter for NVFP4 quantization.
+    """Exporter for NVFP4 quantization."""
 
-    Converts FP32/FP16 weights of an ONNX model to FP4 weights and scaling factors.
-    TRT_FP4QDQ nodes will get removed from the weights and replaced with two DQ nodes
-    with converted FP4 weights and scaling factors.
-    """
+    @classmethod
+    def process_model(cls, onnx_model: onnx.ModelProto) -> onnx.ModelProto:
+        """Processes the ONNX model with comprehensive logging."""
+        overall_start = time.time()
+        logger.info("#" * 100)
+        logger.info("STARTING NVFP4 QUANTIZATION EXPORT PROCESS")
+        logger.info("#" * 100)
+        log_memory_and_size("OVERALL START")
+
+        total_nodes = len(onnx_model.graph.node)
+        total_initializers = len(onnx_model.graph.initializer)
+        fp4_nodes = sum(1 for node in onnx_model.graph.node if node.op_type == "TRT_FP4QDQ")
+
+        logger.info(
+            f"Model Stats: {total_nodes} nodes, {total_initializers} initializers, {fp4_nodes} FP4QDQ nodes"
+        )
+
+        onnx_model = cls.pre_process(onnx_model)
+        onnx_model = cls.compute_scales(onnx_model)
+        onnx_model = cls.compress_weights(onnx_model)
+        onnx_model = cls.post_process(onnx_model)
+
+        final_nodes = len(onnx_model.graph.node)
+        final_initializers = len(onnx_model.graph.initializer)
+        elapsed_total = time.time() - overall_start
+
+        logger.info("#" * 100)
+        logger.info(f"COMPLETED NVFP4 QUANTIZATION EXPORT in {elapsed_total:.2f}s")
+        logger.info(
+            f"Final Stats: {final_nodes} nodes ({final_nodes - total_nodes:+d}), {final_initializers} initializers ({final_initializers - total_initializers:+d})"
+        )
+        log_memory_and_size("OVERALL END")
+        logger.info("#" * 100)
+
+        return onnx_model
 
     @staticmethod
     def pre_process(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Pre-processes the ONNX model for NVFP4 quantization.
-
-        This is a no-op for NVFP4 quantization as no pre-processing is needed.
-        """
+        """Pre-processes the ONNX model. No-op for NVFP4."""
         return onnx_model
 
     @staticmethod
     def compute_scales(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Computes the scales for the weights in the ONNX model for NVFP4 quantization.
+        """Computes scales for weights. Stores as node attributes."""
+        start_time = time.time()
+        logger.info("=" * 80)
+        logger.info("STARTING: Computing scales for NVFP4 quantization")
+        log_memory_and_size("compute_scales START")
 
-        Stores computed scales as node attributes for use in compress_weights.
-        """
-        logger.info("Computing scales for NVFP4 quantization")
         graph = onnx_model.graph
         initializers = graph.initializer
-        initializer_indices = {
-            initializer.name: idx for idx, initializer in enumerate(graph.initializer)
-        }
+        initializer_indices = {init.name: idx for idx, init in enumerate(initializers)}
 
         fp4_qdq_nodes = [node for node in graph.node if node.op_type == "TRT_FP4QDQ"]
-        logger.debug(f"Found {len(fp4_qdq_nodes)} FP4QDQ nodes to process")
+        logger.info(f"Found {len(fp4_qdq_nodes)} FP4QDQ nodes to process")
 
-        for node in fp4_qdq_nodes:
+        processed_count = 0
+        skipped_count = 0
+        total_tensor_size_mb = 0
+
+        for i, node in enumerate(fp4_qdq_nodes):
+            if i % 50 == 0:
+                elapsed = time.time() - start_time
+                rate = i / elapsed if elapsed > 0 else 0
+                eta = (len(fp4_qdq_nodes) - i) / rate if rate > 0 else 0
+                logger.info(
+                    f"Progress: {i}/{len(fp4_qdq_nodes)} nodes, {elapsed:.1f}s elapsed, ETA: {eta:.1f}s"
+                )
+                log_memory_and_size(f"compute_scales node {i}")
+
             idx = initializer_indices.get(node.input[0], None)
-            assert idx is not None, f"Initializer for weight '{node.input[0]}' not found."
+            if idx is None:
+                logger.debug(
+                    f"Skipping node {node.name} - input '{node.input[0]}' is not an initializer"
+                )
+                skipped_count += 1
+                continue
 
             tensor = initializers[idx]
+            tensor_size_mb = len(tensor.raw_data) / (1024**2) if tensor.raw_data else 0
+            total_tensor_size_mb += tensor_size_mb
+
+            logger.debug(f"Processing weight '{node.input[0]}' ({tensor_size_mb:.2f}MB)")
             w32 = utils.read_f16_tensor_as_fp32(tensor)
 
             # Compute scales
@@ -227,8 +283,9 @@ class NVFP4QuantExporter(ONNXQuantExporter):
             sw_f32_per_block = get_weights_scaling_factor(w32, block_size, sw_f32_per_tensor)
 
             logger.debug(f"Computed scales for weight {node.input[0]} with block size {block_size}")
+            processed_count += 1
 
-            # Store scales as node attributes for use in compress_weights
+            # Store scales as node attributes
             sw_per_tensor_attr = node.attribute.add()
             sw_per_tensor_attr.name = "_sw_f32_per_tensor"
             sw_per_tensor_attr.floats.extend(sw_f32_per_tensor.flatten().tolist())
@@ -241,28 +298,59 @@ class NVFP4QuantExporter(ONNXQuantExporter):
             sw_per_block_shape_attr.name = "_sw_f32_per_block_shape"
             sw_per_block_shape_attr.ints.extend(sw_f32_per_block.shape)
 
+        elapsed_time = time.time() - start_time
+        logger.info("=" * 80)
+        logger.info(f"COMPLETED: compute_scales in {elapsed_time:.2f}s")
+        logger.info(
+            f"Processed {processed_count} weight quantizer nodes, skipped {skipped_count} activation quantizer nodes"
+        )
+        logger.info(f"Total weight tensor size processed: {total_tensor_size_mb:.2f}MB")
+        log_memory_and_size("compute_scales END")
+        logger.info("=" * 80)
+
         return onnx_model
 
     @staticmethod
     def compress_weights(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Compresses the weights in the ONNX model for NVFP4 quantization.
+        """Compresses weights to FP4 format and scales to FP8 format."""
+        start_time = time.time()
+        logger.info("=" * 80)
+        logger.info("STARTING: Compressing weights for NVFP4 quantization")
+        log_memory_and_size("compress_weights START")
 
-        Converts weights to FP4 format and scales to FP8 format.
-        """
-        logger.info("Compressing weights for NVFP4 quantization")
         graph = onnx_model.graph
         initializers = graph.initializer
-        initializer_indices = {
-            initializer.name: idx for idx, initializer in enumerate(graph.initializer)
-        }
+        initializer_indices = {init.name: idx for idx, init in enumerate(initializers)}
 
         fp4_qdq_nodes = [node for node in graph.node if node.op_type == "TRT_FP4QDQ"]
+        logger.info(f"Found {len(fp4_qdq_nodes)} FP4QDQ nodes for weight compression")
 
-        for node in fp4_qdq_nodes:
+        processed_count = 0
+        skipped_count = 0
+        total_compressed_size_mb = 0
+
+        for i, node in enumerate(fp4_qdq_nodes):
+            if i % 50 == 0:
+                elapsed = time.time() - start_time
+                rate = i / elapsed if elapsed > 0 else 0
+                eta = (len(fp4_qdq_nodes) - i) / rate if rate > 0 else 0
+                logger.info(
+                    f"Compression Progress: {i}/{len(fp4_qdq_nodes)} nodes, {elapsed:.1f}s elapsed, ETA: {eta:.1f}s"
+                )
+                log_memory_and_size(f"compress_weights node {i}")
+
             idx = initializer_indices.get(node.input[0], None)
-            assert idx is not None, f"Initializer for weight '{node.input[0]}' not found."
+            if idx is None:
+                logger.debug(
+                    f"Skipping node {node.name} - input '{node.input[0]}' is not an initializer"
+                )
+                skipped_count += 1
+                continue
 
             tensor = initializers[idx]
+            original_size_mb = len(tensor.raw_data) / (1024**2) if tensor.raw_data else 0
+            logger.debug(f"Compressing weight '{node.input[0]}' ({original_size_mb:.2f}MB)")
+
             w32 = utils.read_f16_tensor_as_fp32(tensor)
             block_size = node.attribute[0].i
 
@@ -294,7 +382,16 @@ class NVFP4QuantExporter(ONNXQuantExporter):
             w_f4 = _cast_fp4(w_f32)
             sw_f8_per_block = _cast_fp8(sw_f32_per_block)
 
-            # Store compressed data as node attributes for post_process
+            compressed_size_mb = w_f4.nbytes / (1024**2)
+            total_compressed_size_mb += compressed_size_mb
+            compression_ratio = (
+                original_size_mb / compressed_size_mb if compressed_size_mb > 0 else 0
+            )
+            logger.debug(
+                f"Compressed '{node.input[0]}': {original_size_mb:.2f}MB -> {compressed_size_mb:.2f}MB (ratio: {compression_ratio:.2f}x)"
+            )
+
+            # Store compressed data as node attributes
             w_f4_attr = node.attribute.add()
             w_f4_attr.name = "_w_f4"
             w_f4_attr.t.CopyFrom(numpy_helper.from_array(w_f4, "w_f4"))
@@ -304,70 +401,92 @@ class NVFP4QuantExporter(ONNXQuantExporter):
             sw_f8_attr.t.CopyFrom(numpy_helper.from_array(sw_f8_per_block, "sw_f8"))
 
             logger.debug(f"Compressed weight {node.input[0]} to FP4")
+            processed_count += 1
+
+        elapsed_time = time.time() - start_time
+        logger.info("=" * 80)
+        logger.info(f"COMPLETED: compress_weights in {elapsed_time:.2f}s")
+        logger.info(
+            f"Compressed {processed_count} weight tensors, skipped {skipped_count} activation quantizer nodes"
+        )
+        logger.info(f"Total compressed size: {total_compressed_size_mb:.2f}MB")
+        log_memory_and_size("compress_weights END")
+        logger.info("=" * 80)
 
         return onnx_model
 
     @staticmethod
     def post_process(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Post-processes the ONNX model for NVFP4 quantization.
+        """Replaces TRT_FP4QDQ nodes with DequantizeLinear nodes."""
+        start_time = time.time()
+        logger.info("=" * 80)
+        logger.info("STARTING: Post-processing NVFP4 quantization")
+        log_memory_and_size("post_process START")
 
-        Replaces TRT_FP4QDQ nodes with two DequantizeLinear nodes and handles
-        precision casting for inputs.
-        """
-        logger.info("Post-processing NVFP4 quantization")
         graph = onnx_model.graph
-        initializers_to_delete = []
+        initializers_to_delete = set()
         tensor_consumers = get_tensor_consumer_nodes(graph)
-        initializer_indices = {
-            initializer.name: idx for idx, initializer in enumerate(graph.initializer)
-        }
+        initializer_indices = {init.name: idx for idx, init in enumerate(graph.initializer)}
         value_info_map = {vi.name: vi for vi in graph.value_info}
         graph_inputs = {inp.name for inp in graph.input}
 
         def _get_precision_dtype() -> str:
-            # Check initializers to determine the precision of the weights
             precision_dtype = "Half"
             for initializer in graph.initializer:
                 if initializer.data_type == 16:
                     precision_dtype = "BFloat16"
-                    break  # Assuming all weights are of the same precision
+                    break
             return precision_dtype
 
         def _cast_input_dtypes(node: onnx.NodeProto, precision_dtype: str):
-            # Change the input types to match weight precision (precision_dtype)
             if node.op_type == "Transpose":
                 maybe_matmul = tensor_consumers[node.output[0]][0]
                 assert maybe_matmul.op_type == "MatMul"
                 node = maybe_matmul
 
-            # Create Cast nodes for each input of the target node except bias
             for i, input_name in enumerate(node.input[:2]):
-                cast_output_name = input_name + "_f16"  # Unique name for the cast output
-
-                # Create a Cast node to convert the input to FP16/BF16
+                cast_output_name = node.name + "_" + input_name + "_f16"
                 cast_node = onnx.helper.make_node(
                     "Cast",
-                    inputs=[input_name],  # Original input of the target node
+                    inputs=[input_name],
                     outputs=[cast_output_name],
-                    to=onnx_dtype_map[precision_dtype],  # Cast to FP16/BF16
+                    to=onnx_dtype_map[precision_dtype],
                 )
-
-                # Insert the Cast node into the graph
                 graph.node.extend([cast_node])
-
-                # Update the target node input to use the cast node output
                 node.input[i] = cast_output_name
 
         precision_dtype = _get_precision_dtype()
         logger.debug(f"Using precision dtype: {precision_dtype}")
 
         fp4_qdq_nodes = [node for node in graph.node if node.op_type == "TRT_FP4QDQ"]
-        logger.debug(f"Found {len(fp4_qdq_nodes)} FP4QDQ nodes to convert")
+        logger.info(f"Found {len(fp4_qdq_nodes)} FP4QDQ nodes to convert to DequantizeLinear")
 
-        for node in fp4_qdq_nodes:
+        processed_count = 0
+        skipped_count = 0
+        nodes_created = 0
+
+        for i, node in enumerate(fp4_qdq_nodes):
+            if i % 50 == 0:
+                elapsed = time.time() - start_time
+                rate = i / elapsed if elapsed > 0 else 0
+                eta = (len(fp4_qdq_nodes) - i) / rate if rate > 0 else 0
+                logger.info(
+                    f"Post-process Progress: {i}/{len(fp4_qdq_nodes)} nodes, {elapsed:.1f}s elapsed, ETA: {eta:.1f}s"
+                )
+                log_memory_and_size(f"post_process node {i}")
+
             idx = initializer_indices.get(node.input[0], None)
-            assert idx is not None, f"Initializer for weight '{node.input[0]}' not found."
-            initializers_to_delete.append(graph.initializer[idx].name)
+
+            if idx is None:
+                # Activation quantizer: wire input directly to consumers
+                for consumer in tensor_consumers.get(node.output[0], []):
+                    for j, inp in enumerate(consumer.input):
+                        if inp == node.output[0]:
+                            consumer.input[j] = node.input[0]
+                skipped_count += 1
+                continue
+
+            initializers_to_delete.add(graph.initializer[idx].name)
 
             # Retrieve compressed data from node attributes
             block_size = node.attribute[0].i
@@ -387,7 +506,7 @@ class NVFP4QuantExporter(ONNXQuantExporter):
             assert sw_f8_per_block is not None, f"FP8 scales not found for {node.input[0]}"
             assert sw_f32_per_tensor is not None, f"Per-tensor scales not found for {node.input[0]}"
 
-            logger.debug(f"Replacing FP4QDQ node for weight {node.input[0]} with 2 DQ nodes")
+            logger.debug(f"Converting FP4QDQ node '{node.input[0]}' to DequantizeLinear nodes")
 
             _replace_fp4qdq_with_2dq(
                 graph,
@@ -400,17 +519,37 @@ class NVFP4QuantExporter(ONNXQuantExporter):
                 sw_f8_per_block,
                 block_size,
             )
+            nodes_created += 2
 
             # Cast input dtypes for the next node
             next_node = tensor_consumers[node.output[0]][0]
             _cast_input_dtypes(next_node, precision_dtype)
+            processed_count += 1
 
         # Remove old initializers
+        logger.info(f"Removing {len(initializers_to_delete)} old initializers")
         new_initializers = [
             init for init in graph.initializer if init.name not in initializers_to_delete
         ]
         graph.ClearField("initializer")
         graph.initializer.extend(new_initializers)
-        logger.info(f"Removed {len(initializers_to_delete)} initializers")
+
+        # Batch remove all FP4QDQ nodes
+        nodes_to_remove = {id(n) for n in fp4_qdq_nodes}
+        new_nodes = [n for n in graph.node if id(n) not in nodes_to_remove]
+        graph.ClearField("node")
+        graph.node.extend(new_nodes)
+
+        elapsed_time = time.time() - start_time
+        logger.info("=" * 80)
+        logger.info(f"COMPLETED: post_process in {elapsed_time:.2f}s")
+        logger.info(
+            f"Processed {processed_count} weight quantizer nodes, skipped {skipped_count} activation quantizer nodes"
+        )
+        logger.info(
+            f"Created {nodes_created} DequantizeLinear nodes, removed {len(initializers_to_delete)} initializers"
+        )
+        log_memory_and_size("post_process END")
+        logger.info("=" * 80)
 
         return onnx_model

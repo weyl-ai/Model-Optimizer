@@ -105,6 +105,15 @@ MODEL_ID_TO_DYNAMIC_AXES = {
         "img_ids": {0: "latent_dim"},
         "latent": {0: "batch_size"},
     },
+    "flux2-dev": {
+        "hidden_states": {0: "batch_size", 1: "latent_dim"},
+        "encoder_hidden_states": {0: "batch_size"},
+        "pooled_projections": {0: "batch_size"},
+        "timestep": {0: "batch_size"},
+        "img_ids": {0: "latent_dim"},
+        "guidance": {0: "batch_size"},
+        "latent": {0: "batch_size"},
+    },
     "ltx-video-dev": {
         "hidden_states": {0: "batch_size", 1: "latent_dim"},
         "encoder_hidden_states": {0: "batch_size"},
@@ -125,6 +134,7 @@ def flux_convert_rope_weight_type(onnx_graph):
     for node in graph.nodes:
         if node.op == "Einsum":
             node.inputs[1].dtype = "float32"
+
     return gs.export_onnx(graph)
 
 
@@ -144,6 +154,7 @@ def _gen_dummy_inp_and_dyn_shapes_sdxl(backbone, min_bs=1, opt_bs=1):
     assert isinstance(backbone, UNet2DConditionModel) or isinstance(
         backbone._orig_mod, UNet2DConditionModel
     )
+
     cfg = backbone.config
     assert cfg.addition_embed_type == "text_time"
 
@@ -182,6 +193,7 @@ def _gen_dummy_inp_and_dyn_shapes_sdxl(backbone, min_bs=1, opt_bs=1):
         },
         "return_dict": False,
     }
+
     dummy_kwargs = torch_to(dummy_kwargs, dtype=backbone.dtype)
 
     return dummy_kwargs, dynamic_shapes
@@ -360,7 +372,7 @@ def _gen_dummy_inp_and_dyn_shapes_wan(backbone, min_bs=1, opt_bs=2):
 
 
 def update_dynamic_axes(model_id, dynamic_axes):
-    if model_id in ["flux-dev", "flux-schnell"]:
+    if model_id in ["flux-dev", "flux-schnell", "flux2-dev"]:
         dynamic_axes["out.0"] = dynamic_axes.pop("latent")
     elif model_id in ["sdxl-1.0", "sdxl-turbo"]:
         dynamic_axes["added_cond_kwargs.text_embeds"] = dynamic_axes.pop("text_embeds")
@@ -395,7 +407,7 @@ def generate_dummy_inputs_and_dynamic_axes_and_shapes(model_id, backbone):
         dummy_kwargs, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_sd3(
             backbone, min_bs=2, opt_bs=16
         )
-    elif model_id in ["flux-dev", "flux-schnell"]:
+    elif model_id in ["flux-dev", "flux-schnell", "flux2-dev"]:
         dummy_kwargs, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_flux(
             backbone, min_bs=1, opt_bs=1
         )
@@ -425,7 +437,7 @@ def get_io_shapes(model_id, onnx_load_path, trt_dynamic_shapes):
             output_name = "sample"
         elif model_id in ["sd3.5-medium"]:
             output_name = "out_hidden_states"
-        elif model_id in ["flux-dev", "flux-schnell"]:
+        elif model_id in ["flux-dev", "flux-schnell", "flux2-dev"]:
             output_name = "output"
         else:
             raise NotImplementedError(f"Unsupported model_id: {model_id}")
@@ -434,7 +446,7 @@ def get_io_shapes(model_id, onnx_load_path, trt_dynamic_shapes):
         io_shapes = {output_name: trt_dynamic_shapes["minShapes"]["sample"]}
     elif model_id in ["sd3-medium", "sd3.5-medium"]:
         io_shapes = {output_name: trt_dynamic_shapes["minShapes"]["hidden_states"]}
-    elif model_id in ["flux-dev", "flux-schnell"]:
+    elif model_id in ["flux-dev", "flux-schnell", "flux2-dev"]:
         io_shapes = {}
 
     return io_shapes
@@ -497,7 +509,7 @@ def modelopt_export_sd(
     elif model_name == "sd3.5-medium":
         input_names = ["hidden_states", "encoder_hidden_states", "pooled_projections", "timestep"]
         output_names = ["out_hidden_states"]
-    elif model_name in ["flux-dev", "flux-schnell"]:
+    elif model_name in ["flux-dev", "flux-schnell", "flux2-dev"]:
         input_names = [
             "hidden_states",
             "encoder_hidden_states",
@@ -506,7 +518,7 @@ def modelopt_export_sd(
             "img_ids",
             "txt_ids",
         ]
-        if model_name == "flux-dev":
+        if model_name in ["flux-dev", "flux2-dev"]:
             input_names.append("guidance")
         output_names = ["latent"]
     elif model_name in ["ltx-video-dev"]:
@@ -529,7 +541,7 @@ def modelopt_export_sd(
         raise NotImplementedError(f"Unsupported model_id: {model_name}")
 
     do_constant_folding = True
-    opset_version = 20
+    opset_version = 23
 
     with quantizer_context, torch.inference_mode():
         onnx_export(
@@ -547,6 +559,10 @@ def modelopt_export_sd(
     print(f"Saved at {tmp_output}")
     onnx_model = onnx.load(str(tmp_output), load_external_data=True)
 
+    # recovery_point_path = Path(tmp_output.parent / "recovery.onnx")
+    # save_onnx(onnx_model, recovery_point_path)
+    # onnx_model = onnx.load(str(recovery_point_path), load_external_data=True)
+
     if precision == "fp8":
         if not model_name.startswith("flux"):
             graph = gs.import_onnx(onnx_model)
@@ -559,15 +575,20 @@ def modelopt_export_sd(
             flux_convert_rope_weight_type(onnx_model)
 
     if precision == "fp4":
-        import onnxsim
+        # import onnxslim
 
-        if not onnx_model.ir_version:
-            logger.info(f"onnx_model has no ir_version set")
-            onnx_model.ir_version = 9
-        else:
-            logger.info(f"onnx_model has ir_version set to {onnx_model.ir_version}")
+        # graph = gs.import_onnx(onnx_model)
+        # graph.cleanup().toposort()
+        # onnx_model = gs.export_onnx(graph)
 
-        onnx_model, _ = onnxsim.simplify(onnx_model)
+        # if not onnx_model.ir_version:
+        #     logger.info(f"onnx_model has no ir_version set")
+
+        #     onnx_model.ir_version = 9
+        # else:
+        #     logger.info(f"onnx_model has ir_version set to {onnx_model.ir_version}")
+
+        #     onnx_model = onnxslim.slim(onnx_model)
         onnx_model = NVFP4QuantExporter.process_model(onnx_model)
 
     save_onnx(onnx_model, q_output)

@@ -20,11 +20,11 @@
         {
           default = pkgs.mkShell {
             packages = [
-	      pkgs.cudaPackages_13.cudatoolkit
-	      pkgs.cudaPackages_13.tensorrt
+              pkgs.cudaPackages_13.cudatoolkit
+              pkgs.cudaPackages_13.tensorrt
               pkgs.python3
               pkgs.uv
-	      pkgs.stdenv.cc.cc.lib
+              pkgs.stdenv.cc.cc.lib
             ];
 
             env = lib.optionalAttrs pkgs.stdenv.isLinux {
@@ -34,13 +34,13 @@
             };
 
             shellHook = ''
-              unset PYTHONPATH
-              uv sync
-              source .venv/bin/activate
-              
-	      export CUDA_HOME="${pkgs.cudaPackages_13.cudatoolkit}"
-	      export LD_LIBRARY_PATH="/run/opengl-driver/lib:${pkgs.stdenv.cc.cc.lib}/lib:$LD_LIBRARY_PATH"
-	      export TRITON_LIBCUDA_PATH="/run/opengl-driver/lib"
+                            unset PYTHONPATH
+                            uv sync
+                            source .venv/bin/activate
+                                          
+                   	      export CUDA_HOME="${pkgs.cudaPackages_13.cudatoolkit}"
+              	      export LD_LIBRARY_PATH="/run/opengl-driver/lib:${pkgs.stdenv.cc.cc.lib}/lib:$LD_LIBRARY_PATH"
+                        	      export TRITON_LIBCUDA_PATH="/run/opengl-driver/lib"
             '';
           };
         }

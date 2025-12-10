@@ -1,0 +1,36 @@
+{
+  "input_shapes": {
+    "x": {
+      "shape": [
+        1,
+        4,
+        64,
+        64
+      ],
+      "dtype": "float16"
+    },
+    "t": {
+      "shape": [
+        1
+      ],
+      "dtype": "float16"
+    },
+    "cap_feats": {
+      "shape": [
+        1,
+        77,
+        2048
+      ],
+      "dtype": "float16"
+    }
+  },
+  "dynamic_axes": {},
+  "input_names": [
+    "x",
+    "t",
+    "cap_feats"
+  ],
+  "output_names": [
+    "sample"
+  ]
+}

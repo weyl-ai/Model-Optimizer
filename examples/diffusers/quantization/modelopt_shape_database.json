@@ -1,0 +1,445 @@
+{
+  "description": "Pre-calculated shape configurations for ModelOpt quantization",
+  "version": "1.0.0",
+  "models": {
+    "flux-schnell": {
+      "model_id": "black-forest-labs/FLUX.1-schnell",
+      "architecture": "FluxTransformer2DModel",
+      "total_parameters": 11891178560,
+      "quantizable_weights": 502,
+      "input_shapes": {
+        "hidden_states": [
+          1,
+          4096,
+          16
+        ],
+        "encoder_hidden_states": [
+          1,
+          512,
+          4096
+        ],
+        "pooled_projections": [
+          1,
+          768
+        ],
+        "timestep": [
+          1
+        ],
+        "img_ids": [
+          4096,
+          3
+        ],
+        "txt_ids": [
+          512,
+          3
+        ]
+      },
+      "dynamic_axes": {
+        "hidden_states": {
+          "0": "batch_size",
+          "1": "latent_dim"
+        },
+        "encoder_hidden_states": {
+          "0": "batch_size"
+        },
+        "pooled_projections": {
+          "0": "batch_size"
+        },
+        "timestep": {
+          "0": "batch_size"
+        },
+        "img_ids": {
+          "0": "latent_dim"
+        },
+        "latent": {
+          "0": "batch_size"
+        }
+      },
+      "largest_weights": [
+        {
+          "name": "transformer_blocks.0.norm1.linear.weight",
+          "shape": [
+            18432,
+            3072
+          ],
+          "size_mb": 108.0
+        },
+        {
+          "name": "transformer_blocks.0.norm1_context.linear.weight",
+          "shape": [
+            18432,
+            3072
+          ],
+          "size_mb": 108.0
+        }
+      ]
+    },
+    "flux-dev": {
+      "model_id": "black-forest-labs/FLUX.1-dev",
+      "architecture": "FluxTransformer2DModel",
+      "total_parameters": 11891178560,
+      "quantizable_weights": 502,
+      "input_shapes": {
+        "hidden_states": [
+          1,
+          4096,
+          16
+        ],
+        "encoder_hidden_states": [
+          1,
+          512,
+          4096
+        ],
+        "pooled_projections": [
+          1,
+          768
+        ],
+        "timestep": [
+          1
+        ],
+        "img_ids": [
+          4096,
+          3
+        ],
+        "txt_ids": [
+          512,
+          3
+        ],
+        "guidance": [
+          1
+        ]
+      },
+      "dynamic_axes": {
+        "hidden_states": {
+          "0": "batch_size",
+          "1": "latent_dim"
+        },
+        "encoder_hidden_states": {
+          "0": "batch_size"
+        },
+        "pooled_projections": {
+          "0": "batch_size"
+        },
+        "timestep": {
+          "0": "batch_size"
+        },
+        "img_ids": {
+          "0": "latent_dim"
+        },
+        "guidance": {
+          "0": "batch_size"
+        },
+        "latent": {
+          "0": "batch_size"
+        }
+      }
+    },
+    "flux2-dev": {
+      "model_id": "black-forest-labs/FLUX.2-dev",
+      "architecture": "FluxTransformer2DModel",
+      "total_parameters": 11891178560,
+      "quantizable_weights": 502,
+      "input_shapes": {
+        "hidden_states": [
+          1,
+          4096,
+          16
+        ],
+        "encoder_hidden_states": [
+          1,
+          512,
+          4096
+        ],
+        "pooled_projections": [
+          1,
+          768
+        ],
+        "timestep": [
+          1
+        ],
+        "img_ids": [
+          4096,
+          3
+        ],
+        "txt_ids": [
+          512,
+          3
+        ],
+        "guidance": [
+          1
+        ]
+      },
+      "dynamic_axes": {
+        "hidden_states": {
+          "0": "batch_size",
+          "1": "latent_dim"
+        },
+        "encoder_hidden_states": {
+          "0": "batch_size"
+        },
+        "pooled_projections": {
+          "0": "batch_size"
+        },
+        "timestep": {
+          "0": "batch_size"
+        },
+        "img_ids": {
+          "0": "latent_dim"
+        },
+        "guidance": {
+          "0": "batch_size"
+        },
+        "latent": {
+          "0": "batch_size"
+        }
+      }
+    },
+    "sdxl-base": {
+      "model_id": "stabilityai/stable-diffusion-xl-base-1.0",
+      "architecture": "UNet2DConditionModel",
+      "total_parameters": 2567053313,
+      "quantizable_weights": 1680,
+      "input_shapes": {
+        "sample": [
+          2,
+          4,
+          128,
+          128
+        ],
+        "timestep": [
+          1
+        ],
+        "encoder_hidden_states": [
+          2,
+          77,
+          2048
+        ],
+        "text_embeds": [
+          2,
+          1280
+        ],
+        "time_ids": [
+          2,
+          6
+        ]
+      },
+      "dynamic_axes": {
+        "sample": {
+          "0": "batch_size",
+          "1": "num_channels",
+          "2": "height",
+          "3": "width"
+        },
+        "timestep": {
+          "0": "steps"
+        },
+        "encoder_hidden_states": {
+          "0": "batch_size",
+          "1": "sequence_length"
+        },
+        "text_embeds": {
+          "0": "batch_size"
+        },
+        "time_ids": {
+          "0": "batch_size"
+        },
+        "latent": {
+          "0": "batch_size",
+          "1": "num_channels",
+          "2": "height",
+          "3": "width"
+        }
+      }
+    },
+    "sd3-medium": {
+      "model_id": "stabilityai/stable-diffusion-3-medium",
+      "architecture": "SD3Transformer2DModel",
+      "total_parameters": 2028186027,
+      "quantizable_weights": 648,
+      "input_shapes": {
+        "hidden_states": [
+          2,
+          16,
+          128,
+          128
+        ],
+        "timestep": [
+          2
+        ],
+        "encoder_hidden_states": [
+          2,
+          333,
+          1536
+        ],
+        "pooled_projections": [
+          2,
+          2048
+        ]
+      },
+      "dynamic_axes": {
+        "hidden_states": {
+          "0": "batch_size",
+          "1": "num_channels",
+          "2": "height",
+          "3": "width"
+        },
+        "timestep": {
+          "0": "steps"
+        },
+        "encoder_hidden_states": {
+          "0": "batch_size",
+          "1": "sequence_length"
+        },
+        "pooled_projections": {
+          "0": "batch_size"
+        },
+        "sample": {
+          "0": "batch_size",
+          "1": "num_channels",
+          "2": "height",
+          "3": "width"
+        }
+      }
+    },
+    "sd3.5-medium": {
+      "model_id": "stabilityai/stable-diffusion-3.5-medium",
+      "architecture": "SD3Transformer2DModel",
+      "total_parameters": 2581508651,
+      "quantizable_weights": 648,
+      "input_shapes": {
+        "hidden_states": [
+          2,
+          16,
+          128,
+          128
+        ],
+        "timestep": [
+          2
+        ],
+        "encoder_hidden_states": [
+          2,
+          333,
+          1920
+        ],
+        "pooled_projections": [
+          2,
+          2560
+        ]
+      },
+      "dynamic_axes": {
+        "hidden_states": {
+          "0": "batch_size",
+          "1": "num_channels",
+          "2": "height",
+          "3": "width"
+        },
+        "timestep": {
+          "0": "steps"
+        },
+        "encoder_hidden_states": {
+          "0": "batch_size",
+          "1": "sequence_length"
+        },
+        "pooled_projections": {
+          "0": "batch_size"
+        },
+        "out_hidden_states": {
+          "0": "batch_size",
+          "1": "num_channels",
+          "2": "height",
+          "3": "width"
+        }
+      }
+    },
+    "ltx-video-dev": {
+      "model_id": "Lightricks/LTX-Video",
+      "architecture": "LTXVideoTransformer3DModel",
+      "input_shapes": {
+        "hidden_states": [
+          2,
+          720,
+          128
+        ],
+        "encoder_hidden_states": [
+          2,
+          256,
+          2048
+        ],
+        "timestep": [
+          2,
+          1
+        ],
+        "encoder_attention_mask": [
+          2,
+          256
+        ],
+        "video_coords": [
+          2,
+          3,
+          720
+        ]
+      },
+      "dynamic_axes": {
+        "hidden_states": {
+          "0": "batch_size",
+          "1": "latent_dim"
+        },
+        "encoder_hidden_states": {
+          "0": "batch_size"
+        },
+        "timestep": {
+          "0": "batch_size"
+        },
+        "encoder_attention_mask": {
+          "0": "batch_size"
+        },
+        "video_coords": {
+          "0": "batch_size",
+          "2": "latent_dim"
+        }
+      }
+    },
+    "wan2.2-t2v-14b": {
+      "model_id": "wan-video/wan2.2-t2v-14b",
+      "architecture": "WanTransformer3DModel",
+      "input_shapes": {
+        "hidden_states": [
+          1,
+          16,
+          5,
+          60,
+          60
+        ],
+        "encoder_hidden_states": [
+          1,
+          512,
+          4096
+        ],
+        "timestep": [
+          1
+        ]
+      },
+      "dynamic_axes": {
+        "hidden_states": {
+          "0": "batch_size",
+          "2": "frame_num",
+          "3": "height",
+          "4": "width"
+        },
+        "encoder_hidden_states": {
+          "0": "batch_size"
+        },
+        "timestep": {
+          "0": "batch_size"
+        }
+      }
+    },
+    "z-image-turbo": {
+      "model_id": "Tongyi-MAI/Z-Image-Turbo",
+      "architecture": "ZImageTransformer2DModel",
+      "total_parameters": 6154908736,
+      "input_shapes": {},
+      "dynamic_axes": {}
+    }
+  }
+}

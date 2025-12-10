@@ -1,0 +1,71 @@
+{
+  "input_shapes": {
+    "hidden_states": {
+      "shape": [
+        1,
+        4096,
+        128
+      ],
+      "dtype": "float16"
+    },
+    "encoder_hidden_states": {
+      "shape": [
+        1,
+        512,
+        15360
+      ],
+      "dtype": "float16"
+    },
+    "pooled_projections": {
+      "shape": [
+        1,
+        768
+      ],
+      "dtype": "float16"
+    },
+    "timestep": {
+      "shape": [
+        1
+      ],
+      "dtype": "float32"
+    },
+    "img_ids": {
+      "shape": [
+        4096,
+        3
+      ],
+      "dtype": "float32"
+    }
+  },
+  "dynamic_axes": {
+    "hidden_states": {
+      "0": "batch_size",
+      "1": "latent_dim"
+    },
+    "encoder_hidden_states": {
+      "0": "batch_size"
+    },
+    "pooled_projections": {
+      "0": "batch_size"
+    },
+    "timestep": {
+      "0": "batch_size"
+    },
+    "img_ids": {
+      "0": "latent_dim"
+    },
+    "latent": {
+      "0": "batch_size"
+    }
+  },
+  "input_names": [
+    "hidden_states",
+    "encoder_hidden_states",
+    "pooled_projections",
+    "timestep",
+    "img_ids"
+  ],
+  "output_names": [
+    "latent"
+  ]
+}

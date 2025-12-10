@@ -55,6 +55,7 @@ def check_conv_and_mha(backbone, if_fp4, quantize_mha):
 
         elif isinstance(module, (Attention, AttentionModuleMixin)):
             head_size = int(module.inner_dim / module.heads)
+
             if not quantize_mha or head_size % 16 != 0:
                 module.q_bmm_quantizer.disable()
                 module.k_bmm_quantizer.disable()
@@ -70,6 +71,7 @@ def check_conv_and_mha(backbone, if_fp4, quantize_mha):
 
 def filter_func_ltx_video(name: str) -> bool:
     """Filter function specifically for LTX-Video models."""
+
     pattern = re.compile(r".*(proj_in|time_embed|caption_projection|proj_out).*")
     return pattern.match(name) is not None
 
@@ -158,8 +160,12 @@ class ChannelPadWrapper(nn.Module):
 
                 if new_in != in_f or new_out != out_f:
                     new_weight = torch.zeros(
-                        new_out, new_in, dtype=module.weight.dtype, device=module.weight.device
+                        new_out,
+                        new_in,
+                        dtype=module.weight.dtype,
+                        device=module.weight.device,
                     )
+
                     new_weight[:out_f, :in_f] = module.weight
                     module.weight = nn.Parameter(new_weight)
 

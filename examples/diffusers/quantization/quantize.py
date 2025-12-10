@@ -81,6 +81,7 @@ class ModelType(str, Enum):
     SD35_MEDIUM = "sd3.5-medium"
     FLUX_DEV = "flux-dev"
     FLUX_SCHNELL = "flux-schnell"
+    FLUX2_DEV = "flux2-dev"
     LTX_VIDEO_DEV = "ltx-video-dev"
     WAN22_T2V = "wan2.2-t2v-14b"
 
@@ -143,6 +144,7 @@ def get_model_filter_func(model_type: ModelType) -> Callable[[str], bool]:
     filter_func_map = {
         ModelType.FLUX_DEV: filter_func_default,
         ModelType.FLUX_SCHNELL: filter_func_default,
+        ModelType.FLUX2_DEV: filter_func_default,
         ModelType.SDXL_BASE: filter_func_default,
         ModelType.SDXL_TURBO: filter_func_default,
         ModelType.SD3_MEDIUM: filter_func_default,
@@ -162,6 +164,7 @@ MODEL_REGISTRY: dict[ModelType, str] = {
     ModelType.SD35_MEDIUM: "stabilityai/stable-diffusion-3.5-medium",
     ModelType.FLUX_DEV: "black-forest-labs/FLUX.1-dev",
     ModelType.FLUX_SCHNELL: "black-forest-labs/FLUX.1-schnell",
+    ModelType.FLUX2_DEV: "black-forest-labs/FLUX.2-dev",
     ModelType.LTX_VIDEO_DEV: "Lightricks/LTX-Video-0.9.7-dev",
     ModelType.WAN22_T2V: "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
 }
@@ -173,6 +176,7 @@ MODEL_PIPELINE: dict[ModelType, type[DiffusionPipeline]] = {
     ModelType.SD35_MEDIUM: StableDiffusion3Pipeline,
     ModelType.FLUX_DEV: FluxPipeline,
     ModelType.FLUX_SCHNELL: FluxPipeline,
+    ModelType.FLUX2_DEV: FluxPipeline,
     ModelType.LTX_VIDEO_DEV: LTXConditionPipeline,
     ModelType.WAN22_T2V: WanPipeline,
 }
@@ -226,6 +230,20 @@ MODEL_DEFAULTS: dict[ModelType, dict[str, Any]] = {
         },
     },
     ModelType.FLUX_SCHNELL: {
+        "backbone": "transformer",
+        "dataset": {
+            "name": "Gustavosta/Stable-Diffusion-Prompts",
+            "split": "train",
+            "column": "Prompt",
+        },
+        "inference_extra_args": {
+            "height": 1024,
+            "width": 1024,
+            "guidance_scale": 3.5,
+            "max_sequence_length": 512,
+        },
+    },
+    ModelType.FLUX2_DEV: {
         "backbone": "transformer",
         "dataset": {
             "name": "Gustavosta/Stable-Diffusion-Prompts",
@@ -762,10 +780,14 @@ class Quantizer:
         self.logger.info("Checking for LoRA layers...")
         check_lora(backbone)
 
-        self.logger.info("Padding to 128...")
-        from utils import ChannelPadWrapper
-
-        backbone = ChannelPadWrapper(backbone)
+        # Apply padding only if not skipping
+        if not getattr(self, "skip_padding", False):
+            pass
+            # self.logger.info("Padding to 128...")
+            # from utils import ChannelPadWrapper
+            # backbone = ChannelPadWrapper(backbone)
+        else:
+            self.logger.info("Skipping padding (will be applied separately later)")
 
         self.logger.info("Starting model quantization...")
         mtq.quantize(backbone, quant_config, forward_loop)
@@ -1033,6 +1055,11 @@ def create_argument_parser() -> argparse.ArgumentParser:
     )
     export_group.add_argument("--onnx-dir", type=str, help="Directory for ONNX export")
     export_group.add_argument(
+        "--skip-padding",
+        action="store_true",
+        help="Skip padding during quantization (apply separately later for faster iteration)",
+    )
+    export_group.add_argument(
         "--restore-from", type=str, help="Path to restore from previous checkpoint"
     )
     export_group.add_argument(
@@ -1123,6 +1150,7 @@ def main() -> None:
 
         backbone = pipeline_manager.get_backbone()
         export_manager = ExportManager(export_config, logger)
+        export_manager.skip_padding = args.skip_padding
 
         if export_config.restore_from and export_config.restore_from.exists():
             export_manager.restore_checkpoint(backbone)
@@ -1157,12 +1185,22 @@ def main() -> None:
         )
         mtq.print_quant_summary(backbone)
 
-        export_manager.export_onnx(
-            pipe,
-            backbone,
-            model_config.model_type,
-            quant_config.format,
-        )
+        # Only export ONNX if padding was applied, otherwise skip for separate processing
+        if not args.skip_padding:
+            export_manager.export_onnx(
+                pipe,
+                backbone,
+                model_config.model_type,
+                quant_config.format,
+            )
+        else:
+            logger.info(
+                "Skipping ONNX export - use separate_padding.py to apply padding and export"
+            )
+            logger.info(f"Checkpoint saved to: {export_manager.quantized_torch_ckpt_save_path}")
+            logger.info(
+                f"To complete: python separate_padding.py --checkpoint {export_manager.quantized_torch_ckpt_save_path}"
+            )
         logger.info(
             f"Quantization process completed successfully! Time taken = {time.time() - s} seconds"
         )

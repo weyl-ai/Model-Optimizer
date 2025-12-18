@@ -1,16 +1,153 @@
+[project]
+name = "nvidia-modelopt"
+description = "A library to automatically apply various optimization techniques for AI models to optimize inference with TensorRT / TensorRT-LLM."
+authors = [
+    {name = "NVIDIA Corporation"},
+]
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.12,<3.13"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: Apache Software License",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dynamic = ["version"]
+
+dependencies = [
+    "ninja",
+    "numpy",
+    "nvidia-ml-py>=12",
+    "packaging",
+    "pip>=25.3",
+    "pulp",
+    "pydantic>=2.0",
+    "regex",
+    "rich",
+    "safetensors",
+    "scipy",
+    "sentencepiece>=0.2.1",
+    "tensorrt>=10.14.1.48.post1",
+    "torch>=2.6",
+    "torchprofile>=0.0.4",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+onnx = [
+    "cppimport",
+    "cupy-cuda12x; platform_machine != 'aarch64' and platform_system != 'Darwin'",
+    "ml_dtypes",
+    "onnx-graphsurgeon",
+    "onnxconverter-common~=1.16.0",
+    "onnxruntime-directml==1.20.0; platform_system == 'Windows'",
+    "onnxruntime-gpu~=1.22.0; platform_machine != 'aarch64' and platform_system != 'Darwin' and platform_system != 'Windows'",
+    "onnxruntime~=1.22.0; platform_machine == 'aarch64' or platform_system == 'Darwin'",
+    "onnxscript",
+    "onnxslim>=0.1.76",
+    "onnx~=1.19.0",
+    "polygraphy>=0.49.22",
+]
+
+hf = [
+    "accelerate>=1.0.0",
+    "datasets>=3.0.0",
+    "deepspeed>=0.9.6; platform_system != 'Darwin' and platform_system != 'Windows'",
+    "diffusers>=0.32.2",
+    "huggingface_hub>=0.24.0",
+    "peft>=0.17.0",
+    "transformers<5.0,>=4.53",
+]
+
+dev-lint = [
+    "bandit[toml]==1.7.9",
+    "mypy==1.17.1",
+    "pre-commit==4.3.0",
+    "ruff==0.12.11",
+]
+
+dev-test = [
+    "coverage",
+    "pytest",
+    "pytest-cov",
+    "pytest-instafail",
+    "pytest-timeout",
+    "timm",
+    "torch-geometric",
+    "torchvision",
+    "tox-current-env>=0.0.12",
+    "tox>4.18",
+]
+
+dev-docs = [
+    "autodoc_pydantic>=2.1.0",
+    "sphinx~=8.1.0",
+    "sphinx-argparse>=0.5.2",
+    "sphinx-autobuild>=2024.10.3",
+    "sphinx-copybutton>=0.5.2",
+    "sphinx-inline-tabs>=2023.4.21",
+    "sphinx-rtd-theme~=3.0.0",
+    "sphinx-togglebutton>=0.3.2",
+]
+
+dev-build = [
+    "cython",
+    "setuptools",
+    "setuptools-scm>=8",
+]
+
+all = [
+    "nvidia-modelopt[onnx,hf]",
+]
+
+dev = [
+    "nvidia-modelopt[all,dev-lint,dev-test,dev-docs,dev-build]",
+]
+
+[project.urls]
+Homepage = "https://github.com/NVIDIA/TensorRT-Model-Optimizer"
+Repository = "https://github.com/NVIDIA/TensorRT-Model-Optimizer"
+Issues = "https://github.com/NVIDIA/TensorRT-Model-Optimizer/issues"
+Documentation = "https://nvidia.github.io/TensorRT-Model-Optimizer"
+
+[project.entry-points."modelopt_config_plugins"]
+dummy = "modelopt.core._dummy_plugin:dummy_plugin"
+
+[[tool.uv.index]]
+url = "https://pypi.nvidia.com/"
+
+[project.scripts]
+modelopt = "modelopt.cli.main:main"
+
 ####################################################################################################
 ###############################  BUILD CONFIGURATION  ##############################################
 ####################################################################################################
+
 [build-system]
 requires = ["cython", "setuptools>=80", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools_scm]
+[tool.setuptools]
+packages = ["modelopt"]
+include-package-data = true
 
+[tool.setuptools.package-data]
+"modelopt.torch.export.triton" = ["*.cpp", "*.h"]
+"modelopt.torch._C" = ["*.cpp", "*.h", "*.cu"]
+
+[tool.setuptools_scm]
+write_to = "modelopt/_version.py"
 
 ####################################################################################################
 ###############################  LINTING, FORMATTING AND TESTING CONFIGURATION  ####################
 ####################################################################################################
+
 [tool.ruff]
 target-version = "py310"
 line-length = 100        # Line length limit for code
@@ -80,6 +217,7 @@ extend-ignore = [
     "D",
     "E501",
 ] # Ignore missing docstrings or line length for Jupyter notebooks
+
 "modelopt/torch/quantization/triton/*" = ["N803", "N806", "E731"] # triton style
 "examples/deepseek/ds_kernel.py" = ["N803", "N806", "E731"] # triton style
 
@@ -184,3 +322,19 @@ skips = [
     "B303", # MD2, MD4, MD5, or SHA1
     "B311", # random
 ]
+
+[tool.uv.workspace]
+members = [
+    ".",
+]
+
+[tool.uv.sources]
+nvidia-modelopt = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "nvidia-modelopt[all]",
+]
+
+[tool.uv.extra-build-dependencies]
+"tensorrt-10.14.1.48.post1" = ["setuptools"]

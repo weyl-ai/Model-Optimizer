@@ -1,9 +1,12 @@
 [project]
 name = "nvidia-modelopt"
+
 description = "A library to automatically apply various optimization techniques for AI models to optimize inference with TensorRT / TensorRT-LLM."
+
 authors = [
     {name = "NVIDIA Corporation"},
 ]
+
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.12,<3.13"
@@ -21,6 +24,7 @@ classifiers = [
 dynamic = ["version"]
 
 dependencies = [
+    "lief>=0.17.1",
     "ninja",
     "numpy",
     "nvidia-ml-py>=12",
@@ -329,7 +333,7 @@ members = [
 ]
 
 [tool.uv.sources]
-nvidia-modelopt = { workspace = true }
+nvidia-modelopt = { workspace = true, editable = true }
 
 [dependency-groups]
 dev = [

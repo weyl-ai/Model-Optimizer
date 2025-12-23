@@ -53,12 +53,14 @@ from diffusers import (
     StableDiffusion3Pipeline,
     WanPipeline,
 )
+
 from onnx_utils.export import generate_fp8_scales, modelopt_export_sd
 from tqdm import tqdm
 from utils import (
     check_conv_and_mha,
     check_lora,
     filter_func_default,
+    filter_func_flux,
     filter_func_ltx_video,
     filter_func_wan_video,
     load_calib_prompts,
@@ -137,7 +139,7 @@ def get_model_filter_func(model_type: ModelType) -> Callable[[str], bool]:
         A filter function appropriate for the model type
     """
     filter_func_map = {
-        ModelType.FLUX_DEV: filter_func_default,
+        ModelType.FLUX_DEV: filter_func_flux,
         ModelType.FLUX_SCHNELL: filter_func_default,
         ModelType.SDXL_BASE: filter_func_default,
         ModelType.SDXL_TURBO: filter_func_default,
@@ -721,7 +723,7 @@ class Quantizer:
             if self.model_config.model_type.value.startswith("flux"):
                 quant_config = NVFP4_FP8_MHA_CONFIG
             else:
-                quant_config = NVFP4_DEFAULT_CONFIG
+                quant_config = NVFP4_FP8_MHA_CONFIG
         else:
             raise NotImplementedError(f"Unknown format {self.config.format}")
         set_quant_config_attr(

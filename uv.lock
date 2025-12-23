@@ -652,6 +652,24 @@ wheels = [
 ]
 
 [[package]]
+name = "lief"
+version = "0.17.1"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ad/90/09ab478d99c2a7dc5f5b82beee777e13257477eb1c123820778fa8acb66a/lief-0.17.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:48a8d96e0132323cca4d065f2767db5c30cc80ebcf13ced387db2b1f743a0d1c", size = 2993876, upload-time = "2025-10-25T13:14:51.501Z" },
+    { url = "https://files.pythonhosted.org/packages/e5/f5/b0fa0504adad771c92ba9e01c715054708ef408abe948cb711e36e60a44f/lief-0.17.1-cp312-cp312-macosx_11_0_x86_64.whl", hash = "sha256:a89bc93808e870341067252b349bdc98135f006456b0bead99f5544ccb627ff7", size = 3106973, upload-time = "2025-10-25T13:14:54.868Z" },
+    { url = "https://files.pythonhosted.org/packages/c7/4c/ede797fdaaffd77028c6eddac21f2bb23ea6cfbef7578cda3c1624559d3b/lief-0.17.1-cp312-cp312-manylinux2014_aarch64.whl", hash = "sha256:629e92ec77ce7d1c6842f89ee155c61b70aefc02477b9d579da0a5c274aaf84c", size = 3669706, upload-time = "2025-10-25T13:14:57.987Z" },
+    { url = "https://files.pythonhosted.org/packages/4d/25/301afca668eab4429d6cda399907c1a47241a2770398eb2ddd761463ab6d/lief-0.17.1-cp312-cp312-manylinux_2_28_i686.whl", hash = "sha256:594bb50ab54c3ad280c57bb9b34f8f13137952db36709a2cd925558eaad268d4", size = 3501905, upload-time = "2025-10-25T13:15:00.797Z" },
+    { url = "https://files.pythonhosted.org/packages/b1/f8/9dcc8225c3ab39561509f9bf9c94d541e61c624a3509b54d65b1cf987ab6/lief-0.17.1-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:b204c1f0dfeb820c7982fe40924cd147bc11b1c598d27acddb1ba64a5c653f1b", size = 3405030, upload-time = "2025-10-25T13:15:03.491Z" },
+    { url = "https://files.pythonhosted.org/packages/0e/14/acdf8d9a3f4c0f6c32ed13facfe52366628b075435277f53c9e56105b090/lief-0.17.1-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:d9c07ca8e8c2b0d72281fb5e52568b95e893a7d6fb0a84c4af3c58cc10b73892", size = 3591310, upload-time = "2025-10-25T13:15:06.349Z" },
+    { url = "https://files.pythonhosted.org/packages/db/a8/bd51d2a7c1bcf2dff9f7336b07466db9e8af1c924a7def5770450a624082/lief-0.17.1-cp312-cp312-musllinux_1_2_i686.whl", hash = "sha256:9657541b8e7a43cd0fc52300cacc1a5e1d2023eec4a1929554493932e630e7b1", size = 3958475, upload-time = "2025-10-25T13:15:08.514Z" },
+    { url = "https://files.pythonhosted.org/packages/c3/97/d4b9f0015b2b489687053df503224789dd881c2998817811e520e19811e7/lief-0.17.1-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:479bc9464e8c4af1eaeb0faa77d0dd02d57b6d7bd146a73d494443b618ff5043", size = 3705518, upload-time = "2025-10-25T13:15:11.072Z" },
+    { url = "https://files.pythonhosted.org/packages/11/bd/9cee7f6233f100ce424d7b5827418ddd2aac2190a2069d34296147f8070d/lief-0.17.1-cp312-cp312-win32.whl", hash = "sha256:86c130a0ec2fc3ebb0a230491fd176aa2f26dc4f87a261932046fe3f6c4fd8a6", size = 3459261, upload-time = "2025-10-25T13:15:12.902Z" },
+    { url = "https://files.pythonhosted.org/packages/09/48/e5c04d04c59db2ef370562f52d24e1f03ca0c190c32b4dc3ac01f73ef731/lief-0.17.1-cp312-cp312-win_amd64.whl", hash = "sha256:72cc7c8b2f9f2e1ad19d6b771dc9865f4e3656fd99a057e9b01c02207c9c7e25", size = 3637722, upload-time = "2025-10-25T13:15:15.142Z" },
+    { url = "https://files.pythonhosted.org/packages/52/b6/9e5945608391c18c675ba2db3dbbfd09a59d1d5006cc8edfbbf4ccad3432/lief-0.17.1-cp312-cp312-win_arm64.whl", hash = "sha256:9f0b267b0771af1ef9de64e437391282e57009e68d509146ae76de1588da0cbf", size = 3473218, upload-time = "2025-10-25T13:15:16.862Z" },
+]
+
+[[package]]
 name = "mako"
 version = "1.3.10"
 source = { registry = "https://pypi.org/simple" }
@@ -1000,6 +1018,7 @@ wheels = [
 name = "nvidia-modelopt"
 source = { editable = "." }
 dependencies = [
+    { name = "lief" },
     { name = "ninja" },
     { name = "numpy" },
     { name = "nvidia-ml-py" },
@@ -1161,6 +1180,7 @@ requires-dist = [
     { name = "deepspeed", marker = "sys_platform != 'darwin' and sys_platform != 'win32' and extra == 'hf'", specifier = ">=0.9.6" },
     { name = "diffusers", marker = "extra == 'hf'", specifier = ">=0.32.2" },
     { name = "huggingface-hub", marker = "extra == 'hf'", specifier = ">=0.24.0" },
+    { name = "lief", specifier = ">=0.17.1" },
     { name = "ml-dtypes", marker = "extra == 'onnx'" },
     { name = "mypy", marker = "extra == 'dev-lint'", specifier = "==1.17.1" },
     { name = "ninja" },

@@ -98,6 +98,31 @@ NVFP4_FP8_MHA_CONFIG = {
     "algorithm": {"method": "svdquant", "lowrank": 32},
 }
 
+NVFP4_E2M1 = {
+    "num_bits": (2, 1),
+    "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+    "axis": None,
+    "enable": True,
+}
+
+FP8_E4M3 = {
+    "num_bits": (4, 3),
+    "axis": None,
+}
+
+MODER_NVFP4_FP8_MHA_CONFIG = {
+    "quant_cfg": {
+        "**weight_quantizer": NVFP4_E2M1,
+        "**input_quantizer": NVFP4_E2M1,
+        "*output_quantizer": NVFP4_E2M1,
+        "*[qkv]_bmm_quantizer": NVFP4_E2M1,
+        "*softmax_quantizer": FP8_E4M3,
+        "*bmm2_output_quantizer": {"enable": False},
+        "default": {"enable": False},
+    },
+    "algorithm": "max",
+}
+
 
 def set_quant_config_attr(quant_config, trt_high_precision_dtype, quant_algo, **kwargs):
     algo_cfg = {"method": quant_algo}

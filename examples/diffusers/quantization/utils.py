@@ -44,6 +44,12 @@ def filter_func_default(name: str) -> bool:
     return pattern.match(name) is not None
 
 
+def filter_func_flux(name: str) -> bool:
+    """Default filter function for general models."""
+    pattern = re.compile(r".*(time_emb_proj|time_text_embed).*")
+    return pattern.match(name) is not None
+
+
 def check_conv_and_mha(backbone, if_fp4, quantize_mha):
     for name, module in backbone.named_modules():
         if isinstance(module, (torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d)) and if_fp4:
